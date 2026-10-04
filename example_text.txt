@@ -1,0 +1,35 @@
+Existe uma coisa meio complexa na nossa área.
+
+De tanto a gente discutir arquitetura, defender ideias, justificar decisões, comparar tradeoffs e tentar entender por que uma solução foi escolhida em vez de outra, às vezes uma conversa técnica começa a parecer uma briga que nunca existiu.
+
+A pessoa explica por que prefere uma abordagem e quem está do outro lado entende como "ela está dizendo que a minha ideia é ruim".
+
+Aí você questiona uma decisão e a outra pessoa entende como "ele está atacando o que eu fiz".
+
+E nem sempre é isso.
+
+Às vezes a gente só está tentando entender.
+
+Às vezes eu discordo de uma decisão, mas quero entender por que você chegou nela.
+
+Às vezes eu vou defender uma ideia com unhas e dentes e ainda assim estou completamente aberta a descobrir que existe uma solução melhor.
+
+E às vezes eu vou apontar todos os problemas que consigo encontrar numa proposta justamente porque quero entender se ela realmente se sustenta, não porque quero que ela dê errado.
+
+Discussão técnica deveria permitir isso.
+
+Você pode defender uma ideia sem transformar a ideia do outro em uma ofensa pessoal.
+
+Pode questionar uma decisão sem estar desmerecendo quem tomou a decisão.
+
+Pode mostrar os tradeoffs de uma solução sem estar dizendo que a outra pessoa é incompetente.
+
+E principalmente, pode terminar uma discussão entendendo melhor os dois lados mesmo sem chegar a uma concordância.
+
+Na real, eu acho que esse é um dos sinais de uma boa discussão técnica.
+
+Você sai dela sabendo mais do que sabia quando entrou.
+
+Nem toda discordância é conflito.
+
+Às vezes é só duas pessoas tentando descobrir juntas qual é a melhor forma de resolver um problema.
