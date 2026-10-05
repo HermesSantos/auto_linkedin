@@ -34,9 +34,7 @@ Regras:
 func main() {
 	prompt := strings.TrimSpace(strings.Join(os.Args[1:], " "))
 	if prompt == "" {
-		fmt.Fprint(os.Stderr, "Pedido: ")
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		prompt = strings.TrimSpace(line)
+		prompt = ask("Pedido: ")
 	}
 	if prompt == "" {
 		fmt.Fprintln(os.Stderr, `uso: go run . "faça um texto com tom ácido e irônico"`)
@@ -60,6 +58,32 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println(text)
+
+	switch strings.ToLower(ask("\nPostar no LinkedIn? [s/N] ")) {
+	case "s", "sim":
+	default:
+		return
+	}
+
+	token := os.Getenv("API_DO_LINKEDIN")
+	if token == "" {
+		fmt.Fprintln(os.Stderr, "API_DO_LINKEDIN não definida")
+		os.Exit(1)
+	}
+	url, err := postToLinkedIn(token, text)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "erro ao postar:", err)
+		os.Exit(1)
+	}
+	fmt.Fprintln(os.Stderr, "postado:", url)
+}
+
+var stdin = bufio.NewReader(os.Stdin)
+
+func ask(question string) string {
+	fmt.Fprint(os.Stderr, question)
+	line, _ := stdin.ReadString('\n')
+	return strings.TrimSpace(line)
 }
 
 func generate(ctx context.Context, apiKey, model, prompt string) (string, error) {
