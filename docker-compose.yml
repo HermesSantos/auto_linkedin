@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: auto_linkedin_postgres
+    environment:
+      POSTGRES_USER: auto_linkedin
+      POSTGRES_PASSWORD: auto_linkedin
+      POSTGRES_DB: auto_linkedin
+    ports:
+      - "5433:5432"
+    volumes:
+      - auto_linkedin_rag_pgdata:/var/lib/postgresql
+    restart: unless-stopped
+
+volumes:
+  auto_linkedin_rag_pgdata:
+    name: auto_linkedin_rag_pgdata
