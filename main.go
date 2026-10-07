@@ -10,35 +10,40 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"google.golang.org/genai"
 )
 
-const (
-	defaultModel = "gemini-3.8-flash"
-	maxRequests  = 3
-)
+const defaultModel = "gemini-3.8-flash"
 
 var retryDelays = []time.Duration{10 * time.Second, 30 * time.Second}
 
 const systemPrompt = `Você é um ghostwriter que escreve textos para o LinkedIn no lugar do autor.
 
-Antes de escrever, chame AS DUAS tools (get_writing_example e get_interests) JUNTAS, em paralelo, na sua primeira resposta. Não chame nenhuma tool depois disso.
+A mensagem do usuário traz o pedido, a lista de interesses do autor e alguns textos escritos por ele.
 
 Regras:
-- Imite o estilo do texto de exemplo: vocabulário, ritmo, tamanho das frases, estrutura e formatação.
+- Imite o estilo dos textos de exemplo: vocabulário, ritmo, tamanho das frases, estrutura e formatação.
+- Não copie trechos dos exemplos; use-os só como referência de estilo.
 - Escolha um assunto da lista de interesses (ou combine alguns), a menos que o pedido já defina o assunto.
 - Respeite o tom e as instruções do pedido.
 - Escreva em português do Brasil.
 - Responda APENAS com o texto final, sem introdução, explicação ou comentários.`
 
 func main() {
-	prompt := strings.TrimSpace(strings.Join(os.Args[1:], " "))
-	if prompt == "" {
-		prompt = ask("Pedido: ")
-	}
-	if prompt == "" {
-		fmt.Fprintln(os.Stderr, `uso: go run . "faça um texto com tom ácido e irônico"`)
-		os.Exit(1)
+	args := os.Args[1:]
+	indexing := len(args) > 0 && args[0] == "index"
+
+	var prompt string
+	if !indexing {
+		prompt = strings.TrimSpace(strings.Join(args, " "))
+		if prompt == "" {
+			prompt = ask("Pedido: ")
+		}
+		if prompt == "" {
+			fmt.Fprintln(os.Stderr, "uso: go run . \"faça um texto com tom ácido e irônico\"\n     go run . index [pasta]")
+			os.Exit(1)
+		}
 	}
 
 	loadEnv(".env")
@@ -47,12 +52,46 @@ func main() {
 		fmt.Fprintln(os.Stderr, "API_DO_GEMINI não definida")
 		os.Exit(1)
 	}
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		fmt.Fprintln(os.Stderr, "DATABASE_URL não definida")
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "erro:", err)
+		os.Exit(1)
+	}
+	db, err := pgx.Connect(ctx, dbURL)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "erro ao conectar no banco:", err)
+		os.Exit(1)
+	}
+	defer db.Close(ctx)
+
+	if indexing {
+		dir := defaultPostsDir
+		if len(args) > 1 {
+			dir = args[1]
+		}
+		if err := indexPosts(ctx, client, db, dir); err != nil {
+			fmt.Fprintln(os.Stderr, "erro ao indexar:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	model := os.Getenv("GEMINI_MODEL")
 	if model == "" {
 		model = defaultModel
 	}
 
-	text, err := generate(context.Background(), apiKey, model, prompt)
+	text, err := generate(ctx, client, db, model, prompt)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "erro:", err)
 		os.Exit(1)
@@ -86,46 +125,32 @@ func ask(question string) string {
 	return strings.TrimSpace(line)
 }
 
-func generate(ctx context.Context, apiKey, model, prompt string) (string, error) {
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
-	})
+func generate(ctx context.Context, client *genai.Client, db *pgx.Conn, model, prompt string) (string, error) {
+	vec, err := embed(ctx, client, prompt, "RETRIEVAL_QUERY")
 	if err != nil {
 		return "", err
 	}
+	examples, err := searchExamples(ctx, db, vec, topK)
+	if err != nil {
+		return "", err
+	}
+	if len(examples) == 0 {
+		return "", fmt.Errorf("nenhum post indexado, rode: go run . index")
+	}
+	fmt.Fprintf(os.Stderr, "[rag] %d exemplos encontrados\n", len(examples))
+
+	userPrompt := fmt.Sprintf("Pedido: %s\n\nInteresses do autor: %s\n\nTextos de exemplo do autor:\n\n%s",
+		prompt, strings.Join(techInterests, ", "), strings.Join(examples, "\n\n---\n\n"))
 
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemPrompt, genai.RoleUser),
-		Tools:             tools,
 	}
-	history := []*genai.Content{genai.NewContentFromText(prompt, genai.RoleUser)}
-
-	for range maxRequests {
-		resp, err := generateWithRetry(ctx, client, model, history, config)
-		if err != nil {
-			return "", err
-		}
-
-		calls := resp.FunctionCalls()
-		if len(calls) == 0 {
-			return resp.Text(), nil
-		}
-
-		history = append(history, resp.Candidates[0].Content)
-		var parts []*genai.Part
-		for _, fc := range calls {
-			fmt.Fprintf(os.Stderr, "[tool] %s\n", fc.Name)
-			parts = append(parts, &genai.Part{FunctionResponse: &genai.FunctionResponse{
-				ID:       fc.ID,
-				Name:     fc.Name,
-				Response: callTool(fc),
-			}})
-		}
-		history = append(history, genai.NewContentFromParts(parts, genai.RoleUser))
+	resp, err := generateWithRetry(ctx, client, model,
+		[]*genai.Content{genai.NewContentFromText(userPrompt, genai.RoleUser)}, config)
+	if err != nil {
+		return "", err
 	}
-
-	return "", fmt.Errorf("limite de %d requests atingido sem resposta final", maxRequests)
+	return resp.Text(), nil
 }
 
 func generateWithRetry(ctx context.Context, client *genai.Client, model string, history []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {

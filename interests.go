@@ -1,14 +1,5 @@
 package main
 
-import (
-	"fmt"
-	"os"
-
-	"google.golang.org/genai"
-)
-
-const exampleTextPath = "example_text.txt"
-
 var techInterests = []string{
 	"Inteligência Artificial",
 	"LLMs",
@@ -61,32 +52,4 @@ var techInterests = []string{
 	"AST",
 	"Parsing",
 	"Tree-sitter",
-}
-
-var tools = []*genai.Tool{{
-	FunctionDeclarations: []*genai.FunctionDeclaration{
-		{
-			Name:        "get_writing_example",
-			Description: "Retorna um texto escrito pelo autor, para imitar o estilo de escrita dele (vocabulário, ritmo, estrutura, formatação).",
-		},
-		{
-			Name:        "get_interests",
-			Description: "Retorna a lista de assuntos técnicos de interesse do autor. O texto deve tratar de um ou mais desses assuntos.",
-		},
-	},
-}}
-
-func callTool(fc *genai.FunctionCall) map[string]any {
-	switch fc.Name {
-	case "get_writing_example":
-		b, err := os.ReadFile(exampleTextPath)
-		if err != nil {
-			return map[string]any{"error": err.Error()}
-		}
-		return map[string]any{"output": string(b)}
-	case "get_interests":
-		return map[string]any{"output": techInterests}
-	default:
-		return map[string]any{"error": fmt.Sprintf("tool desconhecida: %s", fc.Name)}
-	}
 }
